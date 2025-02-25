@@ -83,15 +83,25 @@
       productVersion: "0.1",
     };
 
+    var canvas = document.querySelector("#unity-canvas");
+    var loadingBar = document.querySelector("#unity-loading-bar");
+    var progressBarFull = document.querySelector("#unity-progress-bar-full");
+    var fullscreenButton = document.querySelector("#unity-fullscreen-button");
+    var unityInstance = null;
+
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+
     // Create Unity instance
-    createUnityInstance(document.querySelector("#unity-canvas"), config).then((unityInstance) => {
-      window.unityInstance = unityInstance;
+    createUnityInstance(canvas, config).then((instance) => {
+      unityInstance = instance;
+      window.unityInstance = instance;
       console.log("Unity WebGL initialized successfully");
       
       // Send a test message to Unity
       setTimeout(() => {
         try {
-          window.unityInstance.SendMessage('PoseManager', 'UpdatePoseData', 
+          unityInstance.SendMessage('PoseManager', 'UpdatePoseData', 
             JSON.stringify({landmarks: [{x: 0, y: 0, z: 0, visibility: 1}]}));
           console.log("Test message sent to Unity");
         } catch (e) {
@@ -107,3 +117,4 @@
   <script src="pose.js" type="module"></script>
 </body>
 </html>
+
