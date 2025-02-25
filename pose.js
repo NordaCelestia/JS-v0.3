@@ -61,7 +61,7 @@ function initializePose() {
   })
 
   pose.setOptions({
-    modelComplexity: 0,
+    modelComplexity: 1,
     smoothLandmarks: true,
     enableSegmentation: false,
     smoothSegmentation: true,
