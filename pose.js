@@ -10,10 +10,11 @@ let fps = 0;
 let lastPoseData = null;
 let unityConnected = false;
 let lastUnityCheck = 0;
-
-// New variables for controlling send rate
 let lastSendTime = 0;
-let sendInterval = 1000 / 30; // Default to 30 FPS (send every ~33ms)
+let sendInterval = 1000 / 30; 
+let targetFPS = 30; // Default camera FPS
+let lastProcessTime = 0;
+let processInterval = 1000 / targetFPS;
 
 // Configuration
 const config = {
@@ -43,6 +44,8 @@ const leftShoulderAngleElement = document.getElementById("leftShoulderAngle");
 const rightShoulderAngleElement = document.getElementById("rightShoulderAngle");
 const sendRateSlider = document.getElementById("sendRateSlider");
 const sendRateValue = document.getElementById("sendRateValue");
+const captureFpsSlider = document.getElementById("captureFpsSlider");
+const captureFpsValue = document.getElementById("captureFpsValue");
 
 function checkUnityConnection() {
   const now = Date.now();
@@ -209,15 +212,52 @@ function initializeCamera() {
     camera = new window.Camera(videoElement, {
       onFrame: async () => {
         if (isRunning) {
-          await pose.send({ image: videoElement });
+          const currentTime = performance.now();
+          // Only process frames at the target FPS rate
+          if (currentTime - lastProcessTime >= processInterval) {
+            lastProcessTime = currentTime;
+            await pose.send({ image: videoElement });
+          }
         }
       },
       width: config.videoWidth,
       height: config.videoHeight,
+      // Add camera FPS control
+      frameRate: {
+        ideal: targetFPS,
+        max: 60
+      }
     });
   } catch (error) {
     console.error("Error initializing camera:", error);
     alert("Failed to initialize camera. Please make sure you have granted camera permissions.");
+  }
+}
+
+function setCaptureFPS(fps) {
+  if (fps > 0 && fps <= 60) {
+    targetFPS = fps;
+    processInterval = 1000 / fps;
+    
+    // Restart camera with new FPS
+    if (camera) {
+      const wasRunning = isRunning;
+      if (wasRunning) {
+        camera.stop();
+      }
+      
+      initializeCamera();
+      
+      if (wasRunning) {
+        camera.start();
+      }
+    }
+    
+    console.log(`Camera capture rate set to ${fps} FPS (processing every ${processInterval.toFixed(1)}ms)`);
+    return true;
+  } else {
+    console.error("FPS must be between 1 and 60");
+    return false;
   }
 }
 
@@ -303,6 +343,16 @@ if (sendRateSlider) {
   });
 }
 
+if (captureFpsSlider) {
+  captureFpsSlider.addEventListener("input", (e) => {
+    const fps = parseInt(e.target.value);
+    setCaptureFPS(fps);
+    if (captureFpsValue) {
+      captureFpsValue.textContent = fps;
+    }
+  });
+}
+
 // Initialize everything when the page loads
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Initializing application...");
@@ -359,4 +409,16 @@ window.poseDebug = {
       if (isRunning) camera.start();
     }
   },
+  setCaptureFPS: (fps) => {
+    return setCaptureFPS(fps);
+  },
+  
+  getCaptureFPS: () => {
+    return targetFPS;
+  },
+  
+  getCurrentFPS: () => {
+    return fps; // This is the actual measured FPS
+  }
+  
 };
