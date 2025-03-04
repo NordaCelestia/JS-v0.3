@@ -224,8 +224,8 @@ function initializeCamera() {
       height: config.videoHeight,
       // Always request 60 FPS from the camera for smooth display
       frameRate: {
-        ideal: 60,
-        max: 60,
+        ideal: 30,
+        max: 30,
       },
     })
   } catch (error) {
