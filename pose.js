@@ -2,7 +2,7 @@
 let camera = null
 let pose = null
 let isRunning = false
-let debugMode = true
+let debugMode = false
 let sendToUnity = true
 let lastFrameTime = 0
 let frameCount = 0
@@ -68,7 +68,7 @@ function initializePose() {
   })
 
   pose.setOptions({
-    modelComplexity: 1,
+    modelComplexity: 0,
     smoothLandmarks: true,
     enableSegmentation: false,
     smoothSegmentation: true,
