@@ -15,13 +15,15 @@ let sendInterval = 1000 / 30
 let targetFPS = 30 // Default camera FPS
 let lastProcessTime = 0
 let processInterval = 1000 / targetFPS
+let lastSkeletonDrawTime = 0
+let skeletonDrawInterval = 1000 / 15 // Draw skeleton at 15 FPS to save resources
 
 // Configuration
 const config = {
   showVideo: true,
   showSkeleton: true,
-  videoWidth: 1280,
-  videoHeight: 720,
+  videoWidth: 640, // Reduced from 1280
+  videoHeight: 360, // Reduced from 720
 }
 
 // DOM Elements
@@ -68,10 +70,10 @@ function initializePose() {
   })
 
   pose.setOptions({
-    modelComplexity: 0,
+    modelComplexity: 0, // Already using lite model, which is good
     smoothLandmarks: true,
     enableSegmentation: false,
-    smoothSegmentation: true,
+    smoothSegmentation: false, // Disable smooth segmentation for performance
     minDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
   })
@@ -79,6 +81,8 @@ function initializePose() {
   pose.onResults(onResults)
 }
 
+// Less frequent FPS updates to reduce DOM operations
+let fpsUpdateCounter = 0
 function updateFPS() {
   const now = performance.now()
   const delta = now - lastFrameTime
@@ -86,8 +90,10 @@ function updateFPS() {
   lastFrameTime = now
   frameCount++
 
-  if (debugMode) {
+  if (debugMode && ++fpsUpdateCounter >= 10) {
+    // Update every 10 frames
     fpsCounter.textContent = fps.toFixed(1)
+    fpsUpdateCounter = 0
   }
 }
 
@@ -111,31 +117,40 @@ function shouldSendData() {
   return false
 }
 
+function shouldDrawSkeleton() {
+  const currentTime = performance.now()
+  if (currentTime - lastSkeletonDrawTime >= skeletonDrawInterval) {
+    lastSkeletonDrawTime = currentTime
+    return true
+  }
+  return false
+}
+
+// Store the last pose landmarks for drawing
+let lastPoseLandmarks = null
+
 function onResults(results) {
   updateFPS()
   loadingElement.classList.add("hidden")
 
- 
- 
-  if (config.showSkeleton && results.poseLandmarks) {
-    window.drawConnectors(canvasCtx, results.poseLandmarks, window.POSE_CONNECTIONS, {
-      color: "#00FF00",
-      lineWidth: 4,
-    })
-    window.drawLandmarks(canvasCtx, results.poseLandmarks, {
-      color: "#FF0000",
-      lineWidth: 2,
-    })
+  // Store the latest pose landmarks
+  if (results.poseLandmarks) {
+    lastPoseLandmarks = results.poseLandmarks
   }
 
-  if (debugMode && results.poseWorldLandmarks) {
+  // Update debug info less frequently
+  if (debugMode && frameCount % 10 === 0 && results.poseWorldLandmarks) {
     landmarkCounter.textContent = results.poseWorldLandmarks.length
   }
 
-  checkUnityConnection()
+  // Check Unity connection less frequently
+  if (frameCount % 30 === 0) {
+    checkUnityConnection()
+  }
 
   // Only send data if enough time has passed since last send
   if (results.poseWorldLandmarks && window.unityInstance && sendToUnity && shouldSendData()) {
+    // Create a simplified data structure with only necessary data
     const poseData = {
       landmarks: results.poseWorldLandmarks.map((landmark) => ({
         x: -landmark.x,
@@ -167,7 +182,8 @@ function onResults(results) {
         rightShoulder: rightShoulderAngle,
       }
 
-      if (debugMode) {
+      // Update UI elements less frequently
+      if (debugMode && frameCount % 5 === 0) {
         leftElbowAngleElement.textContent = leftElbowAngle.toFixed(1)
         rightElbowAngleElement.textContent = rightElbowAngle.toFixed(1)
         leftShoulderAngleElement.textContent = leftShoulderAngle.toFixed(1)
@@ -184,13 +200,11 @@ function onResults(results) {
         lastSentTime.textContent = new Date().toLocaleTimeString()
         lastSentTime.className = "data-flowing"
 
-        if (frameCount % 60 === 0) {
+        // Log less frequently
+        if (frameCount % 300 === 0) {
           console.log("Pose data transmission:", {
             unityConnected: unityConnected,
             landmarksCount: poseData.landmarks.length,
-            firstLandmark: poseData.landmarks[0],
-            armAngles: poseData.armAngles,
-            timestamp: new Date().toLocaleTimeString(),
             sendRate: `${(1000 / sendInterval).toFixed(1)} FPS`,
           })
         }
@@ -207,10 +221,30 @@ function onResults(results) {
 function initializeCamera() {
   console.log("Initializing camera...")
   try {
+    // Set canvas size to match config
+    canvasElement.width = config.videoWidth
+    canvasElement.height = config.videoHeight
+
     camera = new window.Camera(videoElement, {
       onFrame: async () => {
         if (isRunning) {
-          canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height)
+          // Always draw the camera feed at full frame rate for smooth display
+          if (config.showVideo) {
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height)
+            canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height)
+
+            // Draw skeleton on top of the video, but at a lower refresh rate
+            if (config.showSkeleton && lastPoseLandmarks && shouldDrawSkeleton()) {
+              window.drawConnectors(canvasCtx, lastPoseLandmarks, window.POSE_CONNECTIONS, {
+                color: "#00FF00",
+                lineWidth: 3, // Reduced from 4
+              })
+              window.drawLandmarks(canvasCtx, lastPoseLandmarks, {
+                color: "#FF0000",
+                lineWidth: 1, // Reduced from 2
+              })
+            }
+          }
 
           // Only process pose detection at the target processing rate
           const currentTime = performance.now()
@@ -222,12 +256,13 @@ function initializeCamera() {
       },
       width: config.videoWidth,
       height: config.videoHeight,
-      // Always request 60 FPS from the camera for smooth display
       frameRate: {
         ideal: 30,
         max: 30,
       },
     })
+
+    console.log(`Camera initialized with resolution ${config.videoWidth}x${config.videoHeight}`)
   } catch (error) {
     console.error("Error initializing camera:", error)
     alert("Failed to initialize camera. Please make sure you have granted camera permissions.")
@@ -341,10 +376,22 @@ if (captureFpsSlider) {
 // Initialize everything when the page loads
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Initializing application...")
+
+  // Set canvas size to match config
+  canvasElement.width = config.videoWidth
+  canvasElement.height = config.videoHeight
+
   initializePose()
   initializeCamera()
   initializeDebugging()
   stopButton.disabled = true
+})
+
+// Clean up resources when page is unloaded
+window.addEventListener("beforeunload", () => {
+  if (camera && isRunning) {
+    camera.stop()
+  }
 })
 
 // Add error handling for Unity loading
@@ -388,22 +435,36 @@ window.poseDebug = {
   setVideoResolution: (width, height) => {
     config.videoWidth = width
     config.videoHeight = height
+
+    // Update canvas size
+    canvasElement.width = width
+    canvasElement.height = height
+
     if (camera) {
       camera.stop()
       initializeCamera()
       if (isRunning) camera.start()
     }
+
+    console.log(`Resolution changed to ${width}x${height}`)
   },
   setCaptureFPS: (fps) => {
     return setCaptureFPS(fps)
   },
-
   getCaptureFPS: () => {
     return targetFPS
   },
-
   getCurrentFPS: () => {
     return fps
   },
+  setSkeletonDrawRate: (fps) => {
+    if (fps > 0 && fps <= 60) {
+      skeletonDrawInterval = 1000 / fps
+      console.log(`Skeleton draw rate set to ${fps} FPS (every ${skeletonDrawInterval.toFixed(1)}ms)`)
+      return true
+    }
+    return false
+  },
+  getSkeletonDrawRate: () => 1000 / skeletonDrawInterval,
 }
 
