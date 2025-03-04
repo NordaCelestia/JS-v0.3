@@ -215,5 +215,28 @@ body {
     max-width: 320px;
     margin: 0 auto;
   }
+  .performance-settings {
+    margin-top: 10px;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+  }
+  
+  .performance-settings label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  
+  .performance-settings input[type="radio"] {
+    margin: 0;
+  }
+  
+  .performance-description {
+    font-size: 10px;
+    margin-top: 5px;
+    color: #666;
+  }
 }
 

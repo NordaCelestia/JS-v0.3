@@ -15,8 +15,9 @@ let sendInterval = 1000 / 30
 let targetFPS = 30 // Default camera FPS
 let lastProcessTime = 0
 let processInterval = 1000 / targetFPS
-let lastSkeletonDrawTime = 0
+const lastSkeletonDrawTime = 0
 let skeletonDrawInterval = 1000 / 15 // Draw skeleton at 15 FPS to save resources
+let performanceMode = "low" // Default to low performance mode
 
 // Configuration
 const config = {
@@ -70,15 +71,64 @@ function initializePose() {
   })
 
   pose.setOptions({
-    modelComplexity: 0, // Already using lite model, which is good
+    modelComplexity: 0,
     smoothLandmarks: true,
     enableSegmentation: false,
-    smoothSegmentation: false, // Disable smooth segmentation for performance
+    smoothSegmentation: false,
     minDetectionConfidence: 0.5,
     minTrackingConfidence: 0.5,
   })
 
   pose.onResults(onResults)
+}
+
+function updatePerformanceMode(mode) {
+  performanceMode = mode
+
+  if (mode === "high") {
+    // High performance settings
+    pose.setOptions({
+      modelComplexity: 1, // Medium complexity
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    })
+
+    // Set higher FPS for high-end devices
+    setCaptureFPS(30)
+    window.poseDebug.setSendRate(30)
+
+    console.log("Switched to high performance mode")
+  } else {
+    // Low performance settings
+    pose.setOptions({
+      modelComplexity: 0, // Lowest complexity
+      smoothLandmarks: true,
+      enableSegmentation: false,
+      smoothSegmentation: false,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5,
+    })
+
+    // Set lower FPS for low-end devices
+    setCaptureFPS(15)
+    window.poseDebug.setSendRate(15)
+
+    console.log("Switched to low performance mode")
+  }
+
+  // Update UI sliders to reflect new settings
+  if (captureFpsSlider) {
+    captureFpsSlider.value = targetFPS
+    captureFpsValue.textContent = targetFPS
+  }
+
+  if (sendRateSlider) {
+    sendRateSlider.value = Math.round(1000 / sendInterval)
+    sendRateValue.textContent = Math.round(1000 / sendInterval)
+  }
 }
 
 // Less frequent FPS updates to reduce DOM operations
@@ -117,13 +167,10 @@ function shouldSendData() {
   return false
 }
 
+// Change the shouldDrawSkeleton function to always return true
+// This will ensure the skeleton is drawn on every frame
 function shouldDrawSkeleton() {
-  const currentTime = performance.now()
-  if (currentTime - lastSkeletonDrawTime >= skeletonDrawInterval) {
-    lastSkeletonDrawTime = currentTime
-    return true
-  }
-  return false
+  return true
 }
 
 // Store the last pose landmarks for drawing
@@ -229,19 +276,21 @@ function initializeCamera() {
       onFrame: async () => {
         if (isRunning) {
           // Always draw the camera feed at full frame rate for smooth display
+          // Modify the camera onFrame function to always draw the skeleton if available
+          // Replace the existing if block for drawing the skeleton with this:
           if (config.showVideo) {
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height)
             canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height)
 
-            // Draw skeleton on top of the video, but at a lower refresh rate
-            if (config.showSkeleton && lastPoseLandmarks && shouldDrawSkeleton()) {
+            // Always draw skeleton if we have landmarks, regardless of timing
+            if (config.showSkeleton && lastPoseLandmarks) {
               window.drawConnectors(canvasCtx, lastPoseLandmarks, window.POSE_CONNECTIONS, {
                 color: "#00FF00",
-                lineWidth: 3, // Reduced from 4
+                lineWidth: 3,
               })
               window.drawLandmarks(canvasCtx, lastPoseLandmarks, {
                 color: "#FF0000",
-                lineWidth: 1, // Reduced from 2
+                lineWidth: 1,
               })
             }
           }
@@ -283,7 +332,18 @@ function setCaptureFPS(fps) {
 
 function initializeDebugging() {
   console.log("Initializing debugging features...")
-  document.querySelector(".debug-info").style.display = debugMode ? "block" : "none"
+
+  // Add the performance mode UI
+  addPerformanceModeUI()
+  console.log("Performance mode UI should be added now")
+
+  // Set up debug info display
+  const debugInfo = document.querySelector(".debug-info")
+  if (debugInfo) {
+    debugInfo.style.display = debugMode ? "block" : "none"
+  } else {
+    console.warn("Debug info element not found")
+  }
 
   document.addEventListener("keydown", (e) => {
     switch (e.key.toLowerCase()) {
@@ -302,6 +362,103 @@ function initializeDebugging() {
         break
     }
   })
+}
+
+function addPerformanceModeUI() {
+  console.log("Adding performance mode UI...")
+
+  // Find the existing settings container
+  const settingsDiv = document.querySelector(".settings")
+
+  if (!settingsDiv) {
+    console.error("Settings div not found!")
+    return
+  }
+
+  // Create the performance mode section
+  const performanceDiv = document.createElement("div")
+  performanceDiv.className = "performance-settings"
+  performanceDiv.style.marginTop = "10px"
+
+  const performanceTitle = document.createElement("label")
+  performanceTitle.textContent = "Performance Mode:"
+  performanceTitle.style.display = "block"
+  performanceTitle.style.marginBottom = "5px"
+
+  const radioContainer = document.createElement("div")
+  radioContainer.style.display = "flex"
+  radioContainer.style.gap = "10px"
+
+  // Low performance option
+  const lowLabel = document.createElement("label")
+  lowLabel.style.display = "flex"
+  lowLabel.style.alignItems = "center"
+  lowLabel.style.gap = "4px"
+
+  const lowRadio = document.createElement("input")
+  lowRadio.type = "radio"
+  lowRadio.name = "performanceMode"
+  lowRadio.value = "low"
+  lowRadio.checked = performanceMode === "low"
+  lowRadio.id = "lowPerformance"
+
+  lowLabel.appendChild(lowRadio)
+  lowLabel.appendChild(document.createTextNode("Low-end Device"))
+
+  // High performance option
+  const highLabel = document.createElement("label")
+  highLabel.style.display = "flex"
+  highLabel.style.alignItems = "center"
+  highLabel.style.gap = "4px"
+
+  const highRadio = document.createElement("input")
+  highRadio.type = "radio"
+  highRadio.name = "performanceMode"
+  highRadio.value = "high"
+  highRadio.checked = performanceMode === "high"
+  highRadio.id = "highPerformance"
+
+  highLabel.appendChild(highRadio)
+  highLabel.appendChild(document.createTextNode("High-end Device"))
+
+  // Add event listeners
+  lowRadio.addEventListener("change", () => {
+    if (lowRadio.checked) {
+      updatePerformanceMode("low")
+    }
+  })
+
+  highRadio.addEventListener("change", () => {
+    if (highRadio.checked) {
+      updatePerformanceMode("high")
+    }
+  })
+
+  // Assemble the UI
+  radioContainer.appendChild(lowLabel)
+  radioContainer.appendChild(highLabel)
+
+  performanceDiv.appendChild(performanceTitle)
+  performanceDiv.appendChild(radioContainer)
+
+  // Add description
+  const description = document.createElement("div")
+  description.textContent = "Low: Less accurate but faster. High: More accurate but requires more processing power."
+  description.style.fontSize = "12px"
+  description.style.marginTop = "5px"
+  description.style.color = "#666"
+
+  performanceDiv.appendChild(description)
+
+  // Insert the performance settings after the last existing setting
+  const lastSetting = settingsDiv.lastElementChild
+  if (lastSetting) {
+    lastSetting.after(performanceDiv)
+  } else {
+    settingsDiv.appendChild(performanceDiv)
+  }
+
+  console.log("Performance mode UI added successfully")
 }
 
 // Event Listeners
@@ -383,8 +540,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initializePose()
   initializeCamera()
-  initializeDebugging()
+  initializeDebugging() // This line is crucial
   stopButton.disabled = true
+
+  console.log("Application initialization complete")
 })
 
 // Clean up resources when page is unloaded
@@ -424,7 +583,7 @@ window.poseDebug = {
       if (sendRateValue) {
         sendRateValue.textContent = fps
       }
-      console.log(`Send rate set to ${fps} FPS (every ${sendInterval.toFixed(1)}ms)`)
+      console.log(`Send rate set to ${fps} FPS (every ${sendInterval.toFixed(1)}ms`)
       return true
     } else {
       console.error("FPS must be between 1 and 60")
@@ -466,5 +625,26 @@ window.poseDebug = {
     return false
   },
   getSkeletonDrawRate: () => 1000 / skeletonDrawInterval,
+
+  // Add these new methods
+  setPerformanceMode: (mode) => {
+    if (mode === "high" || mode === "low") {
+      updatePerformanceMode(mode)
+
+      // Update radio buttons
+      const lowRadio = document.getElementById("lowPerformance")
+      const highRadio = document.getElementById("highPerformance")
+
+      if (lowRadio && highRadio) {
+        lowRadio.checked = mode === "low"
+        highRadio.checked = mode === "high"
+      }
+
+      return true
+    }
+    return false
+  },
+
+  getPerformanceMode: () => performanceMode,
 }
 
